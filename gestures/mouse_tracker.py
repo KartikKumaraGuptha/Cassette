@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import time
 import threading
+import sys
 
 from PySide6.QtCore import QObject, Signal
 from pynput import mouse, keyboard
@@ -11,11 +12,13 @@ from .s_gesture import s_score
 
 
 class GlobalGestureTracker(QObject):
-    """Global Ctrl+Alt + small hand-drawn S recognizer.
+    """Global Cassette activation gesture.
 
-    On Windows it samples the physical modifier state and cursor position
-    directly, so the gesture works above other applications and does not rely
-    on mouse/keyboard callback ordering.
+    Windows keeps the existing Ctrl+Alt + hand-drawn S gesture.
+    macOS uses a double-tap of the Right Command (⌘) key instead.
+
+    The macOS shortcut is intentionally handled from the global keyboard
+    listener and does not require a mouse gesture.
     """
 
     gesture_detected = Signal()
@@ -45,11 +48,15 @@ class GlobalGestureTracker(QObject):
             self._thread = threading.Thread(target=self._windows_poll, name="CassetteGesture", daemon=True)
             self._thread.start()
         else:
-            # macOS/Linux path uses pynput. On macOS, grant Cassette
-            # Accessibility/Input Monitoring permission when prompted by
-            # System Settings > Privacy & Security.
+            # macOS uses a global keyboard listener for the Right Command
+            # double-tap. Linux keeps the existing Ctrl+Alt + S fallback.
+            # On macOS, grant Cassette Accessibility/Input Monitoring
+            # permission when prompted by System Settings > Privacy & Security.
             self._key_listener = keyboard.Listener(on_press=self._key_down, on_release=self._key_up)
-            self._mouse_listener = mouse.Listener(on_move=self._move)
+            if sys.platform == "darwin":
+                self._mouse_listener = None
+            else:
+                self._mouse_listener = mouse.Listener(on_move=self._move)
             try:
                 self._key_listener.start()
                 self._mouse_listener.start()
@@ -84,7 +91,20 @@ class GlobalGestureTracker(QObject):
         self.chord = False
 
     def _key_down(self, key):
-        # Non-Windows fallback.
+        # macOS: double-tap the physical Right Command key to toggle Cassette.
+        if sys.platform == "darwin":
+            if key == keyboard.Key.cmd_r:
+                now = time.monotonic()
+                if now - self._last_right_command_tap <= self._right_command_tap_interval:
+                    self._last_right_command_tap = 0.0
+                    if now >= self.cooldown_until:
+                        self.cooldown_until = now + 0.45
+                        self.gesture_detected.emit()
+                else:
+                    self._last_right_command_tap = now
+            return
+
+        # Non-Windows fallback (Linux).
         if key in (keyboard.Key.ctrl, keyboard.Key.ctrl_l, keyboard.Key.ctrl_r):
             self.ctrl = True
         if key in (keyboard.Key.alt, keyboard.Key.alt_l, keyboard.Key.alt_r):
@@ -95,6 +115,9 @@ class GlobalGestureTracker(QObject):
                 self._begin(x, y)
 
     def _key_up(self, key):
+        if sys.platform == "darwin":
+            return
+
         if key in (keyboard.Key.ctrl, keyboard.Key.ctrl_l, keyboard.Key.ctrl_r):
             self.ctrl = False
         if key in (keyboard.Key.alt, keyboard.Key.alt_l, keyboard.Key.alt_r):
