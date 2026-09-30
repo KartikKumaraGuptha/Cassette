@@ -38,7 +38,7 @@ jobs:
     steps:
 
       # ------------------------------------------------------------
-      # 1. Checkout
+      # 1. Checkout repository
       # ------------------------------------------------------------
 
       - name: Checkout
@@ -86,11 +86,12 @@ jobs:
           echo "Runner:"
           echo "$RUNNER_OS"
 
+          echo ""
           echo "======================================"
 
 
       # ------------------------------------------------------------
-      # 4. Install dependencies
+      # 4. Install Python dependencies
       # ------------------------------------------------------------
 
       - name: Install dependencies
@@ -114,7 +115,7 @@ jobs:
 
 
       # ------------------------------------------------------------
-      # 6. Verify source
+      # 6. Verify Python source
       # ------------------------------------------------------------
 
       - name: Verify source
@@ -147,7 +148,7 @@ jobs:
 
 
       # ------------------------------------------------------------
-      # 8. Create macOS icon
+      # 8. Create macOS application icon
       # ------------------------------------------------------------
 
       - name: Create macOS app icon
@@ -207,7 +208,7 @@ jobs:
 
           test -f cassette.icns
 
-          echo "Cassette icon created."
+          echo "Cassette.icns created successfully."
 
 
       # ------------------------------------------------------------
@@ -223,7 +224,6 @@ jobs:
           python -m PyInstaller \
             --noconfirm \
             --clean \
-            --target-arch arm64 \
             Cassette_mac.spec
 
           test -d dist/Cassette.app
@@ -259,6 +259,7 @@ jobs:
           lipo -info \
             dist/Cassette.app/Contents/MacOS/Cassette
 
+          echo ""
           echo "======================================"
 
 
@@ -279,19 +280,28 @@ jobs:
 
 
       # ------------------------------------------------------------
-      # 12. Set minimum macOS version in Info.plist
+      # 12. Set minimum macOS version
       # ------------------------------------------------------------
 
       - name: Set minimum macOS version
         shell: bash
         run: |
-          /usr/libexec/PlistBuddy \
-            -c "Add :LSMinimumSystemVersion string 26.0" \
-            dist/Cassette.app/Contents/Info.plist \
-            || \
-          /usr/libexec/PlistBuddy \
-            -c "Set :LSMinimumSystemVersion 26.0" \
-            dist/Cassette.app/Contents/Info.plist
+          if /usr/libexec/PlistBuddy \
+            -c "Print :LSMinimumSystemVersion" \
+            dist/Cassette.app/Contents/Info.plist >/dev/null 2>&1
+          then
+
+            /usr/libexec/PlistBuddy \
+              -c "Set :LSMinimumSystemVersion 26.0" \
+              dist/Cassette.app/Contents/Info.plist
+
+          else
+
+            /usr/libexec/PlistBuddy \
+              -c "Add :LSMinimumSystemVersion string 26.0" \
+              dist/Cassette.app/Contents/Info.plist
+
+          fi
 
           echo "Minimum macOS version:"
 
@@ -326,14 +336,14 @@ jobs:
             dist/Cassette.app/Contents/Info.plist
 
           echo ""
-          echo "Minimum macOS:"
+          echo "Minimum macOS version:"
 
           /usr/libexec/PlistBuddy \
             -c "Print :LSMinimumSystemVersion" \
             dist/Cassette.app/Contents/Info.plist
 
           echo ""
-          echo "Executable:"
+          echo "Executable architecture:"
 
           file \
             dist/Cassette.app/Contents/MacOS/Cassette
@@ -343,6 +353,7 @@ jobs:
 
           du -sh dist/Cassette.app
 
+          echo ""
           echo "======================================"
 
 
@@ -433,7 +444,7 @@ jobs:
             dist/Cassette-macOS26-27-arm64.app.zip
 
           echo ""
-          echo "Architecture:"
+          echo "Executable architecture:"
           file \
             dist/Cassette.app/Contents/MacOS/Cassette
 
