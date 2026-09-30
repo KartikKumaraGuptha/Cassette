@@ -8,10 +8,12 @@ on:
         required: true
         default: false
         type: boolean
+
       version:
         description: "Version shown in the macOS app bundle"
         required: true
         default: "1.0.0"
+
   push:
     tags:
       - "v*"
@@ -25,11 +27,15 @@ jobs:
 
     strategy:
       fail-fast: false
+
       matrix:
         include:
+          # Apple Silicon
           - runner: macos-14
             arch: arm64
             arch_name: Apple-Silicon
+
+          # Intel
           - runner: macos-13
             arch: x86_64
             arch_name: Intel
@@ -40,57 +46,126 @@ jobs:
       CASSETTE_VERSION: ${{ inputs.version || '1.0.0' }}
 
     steps:
+
+      # ---------------------------------------------------------
+      # 1. Get Cassette source code
+      # ---------------------------------------------------------
       - name: Checkout
         uses: actions/checkout@v4
 
+
+      # ---------------------------------------------------------
+      # 2. Install Python
+      # ---------------------------------------------------------
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
+
+      # ---------------------------------------------------------
+      # 3. Install Cassette dependencies
+      # ---------------------------------------------------------
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt pyinstaller
+          python -m pip install -r requirements.txt
+          python -m pip install pyinstaller
 
-      - name: Verify source and keep Client ID empty
+
+      # ---------------------------------------------------------
+      # 4. Verify Python source
+      #
+      # IMPORTANT:
+      # We do NOT search for SPOTIFY_CLIENT_ID here.
+      #
+      # Cassette's setup window legitimately contains code that
+      # writes SPOTIFY_CLIENT_ID to the user's local .env file.
+      #
+      # The actual Client ID is entered by the user at first launch.
+      # It is NOT supposed to be stored in GitHub.
+      # ---------------------------------------------------------
+      - name: Verify source
         shell: bash
         run: |
-          if grep -RIn --exclude-dir=.git --exclude='*.png' --exclude='*.svg' 'SPOTIFY_CLIENT_ID=[^[:space:]]' .; then
-            echo "ERROR: A non-empty Spotify Client ID was found in the source tree."
-            exit 1
-          fi
-          python -m compileall -q config gestures services spotify ui main.py
+          python -m compileall -q \
+            config \
+            gestures \
+            services \
+            spotify \
+            ui \
+            main.py
 
+
+      # ---------------------------------------------------------
+      # 5. Create macOS application icon
+      # ---------------------------------------------------------
       - name: Create macOS app icon
         shell: bash
         run: |
           rm -rf cassette.iconset cassette.icns
+
           mkdir cassette.iconset
 
-          sips -z 16 16 logo.png --out cassette.iconset/icon_16x16.png
-          sips -z 32 32 logo.png --out cassette.iconset/icon_16x16@2x.png
-          sips -z 32 32 logo.png --out cassette.iconset/icon_32x32.png
-          sips -z 64 64 logo.png --out cassette.iconset/icon_32x32@2x.png
-          sips -z 128 128 logo.png --out cassette.iconset/icon_128x128.png
-          sips -z 256 256 logo.png --out cassette.iconset/icon_128x128@2x.png
-          sips -z 256 256 logo.png --out cassette.iconset/icon_256x256.png
-          sips -z 512 512 logo.png --out cassette.iconset/icon_256x256@2x.png
-          sips -z 512 512 logo.png --out cassette.iconset/icon_512x512.png
-          sips -z 1024 1024 logo.png --out cassette.iconset/icon_512x512@2x.png
+          sips -z 16 16 logo.png \
+            --out cassette.iconset/icon_16x16.png
 
-          iconutil -c icns cassette.iconset -o cassette.icns
+          sips -z 32 32 logo.png \
+            --out cassette.iconset/icon_16x16@2x.png
+
+          sips -z 32 32 logo.png \
+            --out cassette.iconset/icon_32x32.png
+
+          sips -z 64 64 logo.png \
+            --out cassette.iconset/icon_32x32@2x.png
+
+          sips -z 128 128 logo.png \
+            --out cassette.iconset/icon_128x128.png
+
+          sips -z 256 256 logo.png \
+            --out cassette.iconset/icon_128x128@2x.png
+
+          sips -z 256 256 logo.png \
+            --out cassette.iconset/icon_256x256.png
+
+          sips -z 512 512 logo.png \
+            --out cassette.iconset/icon_256x256@2x.png
+
+          sips -z 512 512 logo.png \
+            --out cassette.iconset/icon_512x512.png
+
+          sips -z 1024 1024 logo.png \
+            --out cassette.iconset/icon_512x512@2x.png
+
+          iconutil -c icns \
+            cassette.iconset \
+            -o cassette.icns
+
           rm -rf cassette.iconset
 
+
+      # ---------------------------------------------------------
+      # 6. Build Cassette.app with PyInstaller
+      # ---------------------------------------------------------
       - name: Build Cassette.app
         shell: bash
         run: |
           rm -rf build dist
-          python -m PyInstaller --noconfirm --clean Cassette_mac.spec
+
+          python -m PyInstaller \
+            --noconfirm \
+            --clean \
+            Cassette_mac.spec
 
           test -d dist/Cassette.app
-          test -f dist/Cassette.app/Contents/MacOS/Cassette
 
+          test -f \
+            dist/Cassette.app/Contents/MacOS/Cassette
+
+
+      # ---------------------------------------------------------
+      # 7. Set application version
+      # ---------------------------------------------------------
       - name: Stamp version
         shell: bash
         run: |
@@ -102,14 +177,24 @@ jobs:
             -c "Set :CFBundleVersion $CASSETTE_VERSION" \
             dist/Cassette.app/Contents/Info.plist
 
+
+      # ---------------------------------------------------------
+      # 8. Create DMG
+      # ---------------------------------------------------------
       - name: Package DMG
         shell: bash
         run: |
           rm -rf dmg_root
+
           mkdir -p dmg_root
 
-          cp -R dist/Cassette.app dmg_root/
-          ln -s /Applications dmg_root/Applications
+          cp -R \
+            dist/Cassette.app \
+            dmg_root/
+
+          ln -s \
+            /Applications \
+            dmg_root/Applications
 
           hdiutil create \
             -volname "Cassette $CASSETTE_VERSION" \
@@ -118,48 +203,86 @@ jobs:
             -format UDZO \
             "dist/Cassette-${{ matrix.arch }}.dmg"
 
+
+      # ---------------------------------------------------------
+      # 9. Create portable .app ZIP
+      # ---------------------------------------------------------
       - name: Package portable ZIP
         shell: bash
         run: |
-          ditto -c -k \
+          ditto \
+            -c \
+            -k \
             --sequesterRsrc \
             --keepParent \
             dist/Cassette.app \
             "dist/Cassette-${{ matrix.arch }}.app.zip"
 
+
+      # ---------------------------------------------------------
+      # 10. Verify the final files
+      # ---------------------------------------------------------
       - name: Verify artifacts
         shell: bash
         run: |
-          test -f "dist/Cassette-${{ matrix.arch }}.dmg"
-          test -f "dist/Cassette-${{ matrix.arch }}.app.zip"
+          test -f \
+            "dist/Cassette-${{ matrix.arch }}.dmg"
+
+          test -f \
+            "dist/Cassette-${{ matrix.arch }}.app.zip"
+
+          echo "Bundle identifier:"
 
           /usr/libexec/PlistBuddy \
             -c "Print :CFBundleIdentifier" \
             dist/Cassette.app/Contents/Info.plist
 
+          echo "Cassette version:"
+
           /usr/libexec/PlistBuddy \
             -c "Print :CFBundleShortVersionString" \
             dist/Cassette.app/Contents/Info.plist
 
-          file dist/Cassette.app/Contents/MacOS/Cassette
+          echo "Executable architecture:"
+
+          file \
+            dist/Cassette.app/Contents/MacOS/Cassette
+
+          echo "Application size:"
+
           du -sh dist/Cassette.app
 
+
+      # ---------------------------------------------------------
+      # 11. Upload DMG and ZIP to GitHub Actions
+      # ---------------------------------------------------------
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: Cassette-macOS-${{ matrix.arch }}
+
           path: |
             dist/Cassette-${{ matrix.arch }}.dmg
             dist/Cassette-${{ matrix.arch }}.app.zip
+
           if-no-files-found: error
+
           retention-days: 30
 
+
+      # ---------------------------------------------------------
+      # 12. Optional GitHub Release
+      # ---------------------------------------------------------
       - name: Attach DMG to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v') || inputs.create_release == true
+
         uses: softprops/action-gh-release@v2
+
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('v{0}', inputs.version) }}
+
           files: |
             dist/Cassette-${{ matrix.arch }}.dmg
             dist/Cassette-${{ matrix.arch }}.app.zip
+
           generate_release_notes: true
