@@ -31,23 +31,13 @@ jobs:
 
     env:
       CASSETTE_VERSION: ${{ inputs.version || '1.0.0' }}
-
-      # Minimum supported macOS version
       MACOSX_DEPLOYMENT_TARGET: "26.0"
 
     steps:
 
-      # ------------------------------------------------------------
-      # 1. Checkout repository
-      # ------------------------------------------------------------
-
       - name: Checkout
         uses: actions/checkout@v4
 
-
-      # ------------------------------------------------------------
-      # 2. Set up Python
-      # ------------------------------------------------------------
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -55,68 +45,44 @@ jobs:
           python-version: "3.13"
 
 
-      # ------------------------------------------------------------
-      # 3. Show build environment
-      # ------------------------------------------------------------
-
       - name: Show build environment
         shell: bash
         run: |
           echo "======================================"
           echo "Cassette macOS 27 ARM64 Build"
           echo "======================================"
-
           echo ""
           echo "macOS:"
           sw_vers
-
           echo ""
           echo "Architecture:"
           uname -m
-
           echo ""
           echo "Python:"
           python --version
-
           echo ""
           echo "PyInstaller target:"
           echo "$MACOSX_DEPLOYMENT_TARGET"
-
           echo ""
           echo "Runner:"
           echo "$RUNNER_OS"
-
           echo ""
           echo "======================================"
 
-
-      # ------------------------------------------------------------
-      # 4. Install Python dependencies
-      # ------------------------------------------------------------
 
       - name: Install dependencies
         shell: bash
         run: |
           python -m pip install --upgrade pip
-
           python -m pip install -r requirements.txt
-
           python -m pip install pyinstaller
 
-
-      # ------------------------------------------------------------
-      # 5. Show PyInstaller version
-      # ------------------------------------------------------------
 
       - name: Show PyInstaller version
         shell: bash
         run: |
           pyinstaller --version
 
-
-      # ------------------------------------------------------------
-      # 6. Verify Python source
-      # ------------------------------------------------------------
 
       - name: Verify source
         shell: bash
@@ -132,10 +98,6 @@ jobs:
           echo "Source compilation successful."
 
 
-      # ------------------------------------------------------------
-      # 7. Verify required project files
-      # ------------------------------------------------------------
-
       - name: Verify project files
         shell: bash
         run: |
@@ -147,10 +109,6 @@ jobs:
           echo "Required project files found."
 
 
-      # ------------------------------------------------------------
-      # 8. Create macOS application icon
-      # ------------------------------------------------------------
-
       - name: Create macOS app icon
         shell: bash
         run: |
@@ -159,50 +117,37 @@ jobs:
 
           mkdir -p cassette.iconset
 
-          sips -z 16 16 \
-            logo.png \
+          sips -z 16 16 logo.png \
             --out cassette.iconset/icon_16x16.png
 
-          sips -z 32 32 \
-            logo.png \
+          sips -z 32 32 logo.png \
             --out cassette.iconset/icon_16x16@2x.png
 
-          sips -z 32 32 \
-            logo.png \
+          sips -z 32 32 logo.png \
             --out cassette.iconset/icon_32x32.png
 
-          sips -z 64 64 \
-            logo.png \
+          sips -z 64 64 logo.png \
             --out cassette.iconset/icon_32x32@2x.png
 
-          sips -z 128 128 \
-            logo.png \
+          sips -z 128 128 logo.png \
             --out cassette.iconset/icon_128x128.png
 
-          sips -z 256 256 \
-            logo.png \
+          sips -z 256 256 logo.png \
             --out cassette.iconset/icon_128x128@2x.png
 
-          sips -z 256 256 \
-            logo.png \
+          sips -z 256 256 logo.png \
             --out cassette.iconset/icon_256x256.png
 
-          sips -z 512 512 \
-            logo.png \
+          sips -z 512 512 logo.png \
             --out cassette.iconset/icon_256x256@2x.png
 
-          sips -z 512 512 \
-            logo.png \
+          sips -z 512 512 logo.png \
             --out cassette.iconset/icon_512x512.png
 
-          sips -z 1024 1024 \
-            logo.png \
+          sips -z 1024 1024 logo.png \
             --out cassette.iconset/icon_512x512@2x.png
 
-          iconutil \
-            -c icns \
-            cassette.iconset \
-            -o cassette.icns
+          iconutil -c icns cassette.iconset -o cassette.icns
 
           rm -rf cassette.iconset
 
@@ -210,10 +155,6 @@ jobs:
 
           echo "Cassette.icns created successfully."
 
-
-      # ------------------------------------------------------------
-      # 9. Build Cassette.app
-      # ------------------------------------------------------------
 
       - name: Build Cassette.app
         shell: bash
@@ -227,16 +168,10 @@ jobs:
             Cassette_mac.spec
 
           test -d dist/Cassette.app
-
-          test -f \
-            dist/Cassette.app/Contents/MacOS/Cassette
+          test -f dist/Cassette.app/Contents/MacOS/Cassette
 
           echo "Cassette.app created successfully."
 
-
-      # ------------------------------------------------------------
-      # 10. Verify ARM64 executable
-      # ------------------------------------------------------------
 
       - name: Verify ARM64 executable
         shell: bash
@@ -244,28 +179,18 @@ jobs:
           echo "======================================"
           echo "ARCHITECTURE CHECK"
           echo "======================================"
-
           echo ""
           echo "Runner architecture:"
           uname -m
-
           echo ""
           echo "Cassette executable:"
-          file \
-            dist/Cassette.app/Contents/MacOS/Cassette
-
+          file dist/Cassette.app/Contents/MacOS/Cassette
           echo ""
           echo "Lipo information:"
-          lipo -info \
-            dist/Cassette.app/Contents/MacOS/Cassette
-
+          lipo -info dist/Cassette.app/Contents/MacOS/Cassette
           echo ""
           echo "======================================"
 
-
-      # ------------------------------------------------------------
-      # 11. Stamp application version
-      # ------------------------------------------------------------
 
       - name: Stamp version
         shell: bash
@@ -278,10 +203,15 @@ jobs:
             -c "Set :CFBundleVersion $CASSETTE_VERSION" \
             dist/Cassette.app/Contents/Info.plist
 
+          echo "Version stamped:"
+          /usr/libexec/PlistBuddy \
+            -c "Print :CFBundleShortVersionString" \
+            dist/Cassette.app/Contents/Info.plist
 
-      # ------------------------------------------------------------
-      # 12. Set minimum macOS version
-      # ------------------------------------------------------------
+          /usr/libexec/PlistBuddy \
+            -c "Print :CFBundleVersion" \
+            dist/Cassette.app/Contents/Info.plist
+
 
       - name: Set minimum macOS version
         shell: bash
@@ -304,15 +234,60 @@ jobs:
           fi
 
           echo "Minimum macOS version:"
-
           /usr/libexec/PlistBuddy \
             -c "Print :LSMinimumSystemVersion" \
             dist/Cassette.app/Contents/Info.plist
 
 
-      # ------------------------------------------------------------
-      # 13. Verify application bundle
-      # ------------------------------------------------------------
+      - name: Re-sign completed application
+        shell: bash
+        run: |
+          echo "======================================"
+          echo "RE-SIGNING CASSETTE.APP"
+          echo "======================================"
+          echo ""
+          echo "All Info.plist modifications are complete."
+          echo "Creating an ad-hoc signature for the final bundle."
+          echo ""
+
+          codesign \
+            --force \
+            --deep \
+            --sign - \
+            dist/Cassette.app
+
+          echo ""
+          echo "Ad-hoc code signing completed."
+
+
+      - name: Verify application signature
+        shell: bash
+        run: |
+          echo "======================================"
+          echo "CODE SIGNATURE VERIFICATION"
+          echo "======================================"
+          echo ""
+
+          codesign \
+            --verify \
+            --deep \
+            --strict \
+            --verbose=4 \
+            dist/Cassette.app
+
+          echo ""
+          echo "Code signature verification successful."
+
+          echo ""
+          echo "Code signing information:"
+          codesign \
+            --display \
+            --verbose=4 \
+            dist/Cassette.app || true
+
+          echo ""
+          echo "======================================"
+
 
       - name: Verify application
         shell: bash
@@ -320,46 +295,36 @@ jobs:
           echo "======================================"
           echo "APPLICATION VERIFICATION"
           echo "======================================"
-
           echo ""
-          echo "Bundle identifier:"
 
+          echo "Bundle identifier:"
           /usr/libexec/PlistBuddy \
             -c "Print :CFBundleIdentifier" \
             dist/Cassette.app/Contents/Info.plist
 
           echo ""
           echo "Cassette version:"
-
           /usr/libexec/PlistBuddy \
             -c "Print :CFBundleShortVersionString" \
             dist/Cassette.app/Contents/Info.plist
 
           echo ""
           echo "Minimum macOS version:"
-
           /usr/libexec/PlistBuddy \
             -c "Print :LSMinimumSystemVersion" \
             dist/Cassette.app/Contents/Info.plist
 
           echo ""
           echo "Executable architecture:"
-
-          file \
-            dist/Cassette.app/Contents/MacOS/Cassette
+          file dist/Cassette.app/Contents/MacOS/Cassette
 
           echo ""
           echo "Application size:"
-
           du -sh dist/Cassette.app
 
           echo ""
           echo "======================================"
 
-
-      # ------------------------------------------------------------
-      # 14. Create DMG
-      # ------------------------------------------------------------
 
       - name: Create DMG
         shell: bash
@@ -368,13 +333,9 @@ jobs:
 
           mkdir -p dmg_root
 
-          cp -R \
-            dist/Cassette.app \
-            dmg_root/
+          cp -R dist/Cassette.app dmg_root/
 
-          ln -s \
-            /Applications \
-            dmg_root/Applications
+          ln -s /Applications dmg_root/Applications
 
           hdiutil create \
             -volname "Cassette $CASSETTE_VERSION" \
@@ -383,15 +344,10 @@ jobs:
             -format UDZO \
             "dist/Cassette-macOS26-27-arm64.dmg"
 
-          test -f \
-            "dist/Cassette-macOS26-27-arm64.dmg"
+          test -f "dist/Cassette-macOS26-27-arm64.dmg"
 
           echo "DMG created successfully."
 
-
-      # ------------------------------------------------------------
-      # 15. Create portable APP ZIP
-      # ------------------------------------------------------------
 
       - name: Create APP ZIP
         shell: bash
@@ -404,15 +360,10 @@ jobs:
             dist/Cassette.app \
             "dist/Cassette-macOS26-27-arm64.app.zip"
 
-          test -f \
-            "dist/Cassette-macOS26-27-arm64.app.zip"
+          test -f "dist/Cassette-macOS26-27-arm64.app.zip"
 
           echo "APP ZIP created successfully."
 
-
-      # ------------------------------------------------------------
-      # 16. Final verification
-      # ------------------------------------------------------------
 
       - name: Final verification
         shell: bash
@@ -421,32 +372,22 @@ jobs:
           echo "FINAL BUILD VERIFICATION"
           echo "======================================"
 
-          test -d \
-            dist/Cassette.app
-
-          test -f \
-            dist/Cassette.app/Contents/MacOS/Cassette
-
-          test -f \
-            dist/Cassette-macOS26-27-arm64.dmg
-
-          test -f \
-            dist/Cassette-macOS26-27-arm64.app.zip
+          test -d dist/Cassette.app
+          test -f dist/Cassette.app/Contents/MacOS/Cassette
+          test -f dist/Cassette-macOS26-27-arm64.dmg
+          test -f dist/Cassette-macOS26-27-arm64.app.zip
 
           echo ""
           echo "DMG:"
-          ls -lh \
-            dist/Cassette-macOS26-27-arm64.dmg
+          ls -lh dist/Cassette-macOS26-27-arm64.dmg
 
           echo ""
           echo "APP ZIP:"
-          ls -lh \
-            dist/Cassette-macOS26-27-arm64.app.zip
+          ls -lh dist/Cassette-macOS26-27-arm64.app.zip
 
           echo ""
           echo "Executable architecture:"
-          file \
-            dist/Cassette.app/Contents/MacOS/Cassette
+          file dist/Cassette.app/Contents/MacOS/Cassette
 
           echo ""
           echo "Minimum macOS:"
@@ -455,14 +396,19 @@ jobs:
             dist/Cassette.app/Contents/Info.plist
 
           echo ""
+          echo "Final code signature verification:"
+          codesign \
+            --verify \
+            --deep \
+            --strict \
+            --verbose=4 \
+            dist/Cassette.app
+
+          echo ""
           echo "======================================"
           echo "BUILD SUCCESSFUL"
           echo "======================================"
 
-
-      # ------------------------------------------------------------
-      # 17. Upload artifacts
-      # ------------------------------------------------------------
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
@@ -474,10 +420,6 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-
-      # ------------------------------------------------------------
-      # 18. Optional GitHub Release
-      # ------------------------------------------------------------
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v') || inputs.create_release == true
