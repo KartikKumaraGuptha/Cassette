@@ -27,7 +27,7 @@ jobs:
   build:
     name: macOS 27 Apple Silicon
 
-    runs-on: xcode-27-arm64
+    runs-on: xcode-27
 
     env:
       CASSETTE_VERSION: ${{ inputs.version || '1.0.0' }}
