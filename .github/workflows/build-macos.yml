@@ -32,6 +32,9 @@ jobs:
     env:
       CASSETTE_VERSION: ${{ inputs.version || '1.0.0' }}
 
+      # Minimum supported macOS version
+      MACOSX_DEPLOYMENT_TARGET: "26.0"
+
     steps:
 
       # ------------------------------------------------------------
@@ -43,7 +46,7 @@ jobs:
 
 
       # ------------------------------------------------------------
-      # 2. Python
+      # 2. Set up Python
       # ------------------------------------------------------------
 
       - name: Set up Python
@@ -53,25 +56,31 @@ jobs:
 
 
       # ------------------------------------------------------------
-      # 3. Show environment
+      # 3. Show build environment
       # ------------------------------------------------------------
 
       - name: Show build environment
         shell: bash
         run: |
           echo "======================================"
-          echo "Cassette macOS 27 Build"
+          echo "Cassette macOS 27 ARM64 Build"
           echo "======================================"
 
+          echo ""
+          echo "macOS:"
           sw_vers
+
+          echo ""
+          echo "Architecture:"
+          uname -m
 
           echo ""
           echo "Python:"
           python --version
 
           echo ""
-          echo "Architecture:"
-          uname -m
+          echo "PyInstaller target:"
+          echo "$MACOSX_DEPLOYMENT_TARGET"
 
           echo ""
           echo "Runner:"
@@ -95,7 +104,17 @@ jobs:
 
 
       # ------------------------------------------------------------
-      # 5. Verify Python source
+      # 5. Show PyInstaller version
+      # ------------------------------------------------------------
+
+      - name: Show PyInstaller version
+        shell: bash
+        run: |
+          pyinstaller --version
+
+
+      # ------------------------------------------------------------
+      # 6. Verify source
       # ------------------------------------------------------------
 
       - name: Verify source
@@ -113,7 +132,7 @@ jobs:
 
 
       # ------------------------------------------------------------
-      # 6. Verify required files
+      # 7. Verify required project files
       # ------------------------------------------------------------
 
       - name: Verify project files
@@ -124,11 +143,11 @@ jobs:
           test -f requirements.txt
           test -f logo.png
 
-          echo "Required files found."
+          echo "Required project files found."
 
 
       # ------------------------------------------------------------
-      # 7. Create macOS icon
+      # 8. Create macOS icon
       # ------------------------------------------------------------
 
       - name: Create macOS app icon
@@ -188,11 +207,11 @@ jobs:
 
           test -f cassette.icns
 
-          echo "Cassette.icns created."
+          echo "Cassette icon created."
 
 
       # ------------------------------------------------------------
-      # 8. Build Cassette.app
+      # 9. Build Cassette.app
       # ------------------------------------------------------------
 
       - name: Build Cassette.app
@@ -204,6 +223,7 @@ jobs:
           python -m PyInstaller \
             --noconfirm \
             --clean \
+            --target-arch arm64 \
             Cassette_mac.spec
 
           test -d dist/Cassette.app
@@ -211,36 +231,39 @@ jobs:
           test -f \
             dist/Cassette.app/Contents/MacOS/Cassette
 
-          echo "Cassette.app successfully created."
+          echo "Cassette.app created successfully."
 
 
       # ------------------------------------------------------------
-      # 9. Verify ARM64
+      # 10. Verify ARM64 executable
       # ------------------------------------------------------------
 
       - name: Verify ARM64 executable
         shell: bash
         run: |
-          echo "Executable architecture:"
+          echo "======================================"
+          echo "ARCHITECTURE CHECK"
+          echo "======================================"
 
+          echo ""
+          echo "Runner architecture:"
+          uname -m
+
+          echo ""
+          echo "Cassette executable:"
           file \
             dist/Cassette.app/Contents/MacOS/Cassette
 
           echo ""
-
-          echo "Detailed architecture:"
-
+          echo "Lipo information:"
           lipo -info \
             dist/Cassette.app/Contents/MacOS/Cassette
 
-          echo ""
-
-          echo "Runner architecture:"
-          uname -m
+          echo "======================================"
 
 
       # ------------------------------------------------------------
-      # 10. Set application version
+      # 11. Stamp application version
       # ------------------------------------------------------------
 
       - name: Stamp version
@@ -256,14 +279,36 @@ jobs:
 
 
       # ------------------------------------------------------------
-      # 11. Verify application
+      # 12. Set minimum macOS version in Info.plist
+      # ------------------------------------------------------------
+
+      - name: Set minimum macOS version
+        shell: bash
+        run: |
+          /usr/libexec/PlistBuddy \
+            -c "Add :LSMinimumSystemVersion string 26.0" \
+            dist/Cassette.app/Contents/Info.plist \
+            || \
+          /usr/libexec/PlistBuddy \
+            -c "Set :LSMinimumSystemVersion 26.0" \
+            dist/Cassette.app/Contents/Info.plist
+
+          echo "Minimum macOS version:"
+
+          /usr/libexec/PlistBuddy \
+            -c "Print :LSMinimumSystemVersion" \
+            dist/Cassette.app/Contents/Info.plist
+
+
+      # ------------------------------------------------------------
+      # 13. Verify application bundle
       # ------------------------------------------------------------
 
       - name: Verify application
         shell: bash
         run: |
           echo "======================================"
-          echo "APPLICATION"
+          echo "APPLICATION VERIFICATION"
           echo "======================================"
 
           echo ""
@@ -274,14 +319,21 @@ jobs:
             dist/Cassette.app/Contents/Info.plist
 
           echo ""
-          echo "Version:"
+          echo "Cassette version:"
 
           /usr/libexec/PlistBuddy \
             -c "Print :CFBundleShortVersionString" \
             dist/Cassette.app/Contents/Info.plist
 
           echo ""
-          echo "Architecture:"
+          echo "Minimum macOS:"
+
+          /usr/libexec/PlistBuddy \
+            -c "Print :LSMinimumSystemVersion" \
+            dist/Cassette.app/Contents/Info.plist
+
+          echo ""
+          echo "Executable:"
 
           file \
             dist/Cassette.app/Contents/MacOS/Cassette
@@ -291,9 +343,11 @@ jobs:
 
           du -sh dist/Cassette.app
 
+          echo "======================================"
+
 
       # ------------------------------------------------------------
-      # 12. Create DMG
+      # 14. Create DMG
       # ------------------------------------------------------------
 
       - name: Create DMG
@@ -316,19 +370,19 @@ jobs:
             -srcfolder dmg_root \
             -ov \
             -format UDZO \
-            "dist/Cassette-macos27-arm64.dmg"
+            "dist/Cassette-macOS26-27-arm64.dmg"
 
           test -f \
-            "dist/Cassette-macos27-arm64.dmg"
+            "dist/Cassette-macOS26-27-arm64.dmg"
 
           echo "DMG created successfully."
 
 
       # ------------------------------------------------------------
-      # 13. Create portable ZIP
+      # 15. Create portable APP ZIP
       # ------------------------------------------------------------
 
-      - name: Create app ZIP
+      - name: Create APP ZIP
         shell: bash
         run: |
           ditto \
@@ -337,51 +391,57 @@ jobs:
             --sequesterRsrc \
             --keepParent \
             dist/Cassette.app \
-            "dist/Cassette-macos27-arm64.app.zip"
+            "dist/Cassette-macOS26-27-arm64.app.zip"
 
           test -f \
-            "dist/Cassette-macos27-arm64.app.zip"
+            "dist/Cassette-macOS26-27-arm64.app.zip"
 
-          echo "App ZIP created successfully."
+          echo "APP ZIP created successfully."
 
 
       # ------------------------------------------------------------
-      # 14. Final verification
+      # 16. Final verification
       # ------------------------------------------------------------
 
       - name: Final verification
         shell: bash
         run: |
           echo "======================================"
-          echo "FINAL BUILD"
+          echo "FINAL BUILD VERIFICATION"
           echo "======================================"
 
-          test -f \
-            "dist/Cassette-macos27-arm64.dmg"
-
-          test -f \
-            "dist/Cassette-macos27-arm64.app.zip"
-
           test -d \
-            "dist/Cassette.app"
+            dist/Cassette.app
 
           test -f \
-            "dist/Cassette.app/Contents/MacOS/Cassette"
+            dist/Cassette.app/Contents/MacOS/Cassette
+
+          test -f \
+            dist/Cassette-macOS26-27-arm64.dmg
+
+          test -f \
+            dist/Cassette-macOS26-27-arm64.app.zip
 
           echo ""
           echo "DMG:"
           ls -lh \
-            "dist/Cassette-macos27-arm64.dmg"
+            dist/Cassette-macOS26-27-arm64.dmg
 
           echo ""
           echo "APP ZIP:"
           ls -lh \
-            "dist/Cassette-macos27-arm64.app.zip"
+            dist/Cassette-macOS26-27-arm64.app.zip
 
           echo ""
           echo "Architecture:"
           file \
             dist/Cassette.app/Contents/MacOS/Cassette
+
+          echo ""
+          echo "Minimum macOS:"
+          /usr/libexec/PlistBuddy \
+            -c "Print :LSMinimumSystemVersion" \
+            dist/Cassette.app/Contents/Info.plist
 
           echo ""
           echo "======================================"
@@ -390,22 +450,22 @@ jobs:
 
 
       # ------------------------------------------------------------
-      # 15. Upload artifacts
+      # 17. Upload artifacts
       # ------------------------------------------------------------
 
-      - name: Upload macOS 27 artifacts
+      - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Cassette-macOS-27-ARM64
+          name: Cassette-macOS-26-27-ARM64
           path: |
-            dist/Cassette-macos27-arm64.dmg
-            dist/Cassette-macos27-arm64.app.zip
+            dist/Cassette-macOS26-27-arm64.dmg
+            dist/Cassette-macOS26-27-arm64.app.zip
           if-no-files-found: error
           retention-days: 30
 
 
       # ------------------------------------------------------------
-      # 16. Optional GitHub Release
+      # 18. Optional GitHub Release
       # ------------------------------------------------------------
 
       - name: Create GitHub Release
@@ -414,6 +474,6 @@ jobs:
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('v{0}', inputs.version) }}
           files: |
-            dist/Cassette-macos27-arm64.dmg
-            dist/Cassette-macos27-arm64.app.zip
+            dist/Cassette-macOS26-27-arm64.dmg
+            dist/Cassette-macOS26-27-arm64.app.zip
           generate_release_notes: true
