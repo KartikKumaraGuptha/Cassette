@@ -302,7 +302,7 @@ class FirstLaunchSetup(QDialog):
         close.clicked.connect(self.reject)
         close.setStyleSheet(self._secondary_style(self._dark_mode))
 
-        self.gesture_hint = QLabel("Hold Ctrl + Alt, then draw an S with your cursor to open or close Cassette.", self)
+        self.gesture_hint = QLabel("On Mac, double-tap the Right Command (⌘) key to open or close Cassette. On Windows, hold Ctrl + Alt, then draw an S.", self)
         self.gesture_hint.setGeometry(*self._sg(36, 486, 292, 50))
         self.gesture_hint.setWordWrap(True)
         self.gesture_hint.setContentsMargins(4, 3, 4, 3)
