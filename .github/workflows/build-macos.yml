@@ -13,6 +13,7 @@ on:
         description: "Version shown in the macOS app bundle"
         required: true
         default: "1.0.0"
+        type: string
 
   push:
     tags:
@@ -22,6 +23,7 @@ permissions:
   contents: write
 
 jobs:
+
   build:
     name: macOS ${{ matrix.arch_name }}
 
@@ -30,13 +32,15 @@ jobs:
 
       matrix:
         include:
+
           # Apple Silicon
-          - runner: macos-14
+          # M1 / M2 / M3 / M4 / future Apple Silicon
+          - runner: macos-26
             arch: arm64
             arch_name: Apple-Silicon
 
           # Intel
-          - runner: macos-13
+          - runner: macos-26-intel
             arch: x86_64
             arch_name: Intel
 
@@ -47,44 +51,65 @@ jobs:
 
     steps:
 
-      # ---------------------------------------------------------
-      # 1. Get Cassette source code
-      # ---------------------------------------------------------
+      # ------------------------------------------------------------
+      # 1. Checkout repository
+      # ------------------------------------------------------------
+
       - name: Checkout
         uses: actions/checkout@v4
 
 
-      # ---------------------------------------------------------
-      # 2. Install Python
-      # ---------------------------------------------------------
+      # ------------------------------------------------------------
+      # 2. Setup Python
+      # ------------------------------------------------------------
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
 
-      # ---------------------------------------------------------
-      # 3. Install Cassette dependencies
-      # ---------------------------------------------------------
+      # ------------------------------------------------------------
+      # 3. Show build environment
+      # ------------------------------------------------------------
+
+      - name: Show build environment
+        shell: bash
+        run: |
+          echo "======================================"
+          echo "Cassette macOS Build"
+          echo "======================================"
+          echo "Runner: $RUNNER_OS"
+          echo "Architecture: ${{ matrix.arch }}"
+          echo "Architecture name: ${{ matrix.arch_name }}"
+          echo "Version: $CASSETTE_VERSION"
+          echo ""
+          sw_vers
+          echo ""
+          python --version
+          echo ""
+          uname -m
+          echo "======================================"
+
+
+      # ------------------------------------------------------------
+      # 4. Install Python dependencies
+      # ------------------------------------------------------------
+
       - name: Install dependencies
+        shell: bash
         run: |
           python -m pip install --upgrade pip
+
           python -m pip install -r requirements.txt
+
           python -m pip install pyinstaller
 
 
-      # ---------------------------------------------------------
-      # 4. Verify Python source
-      #
-      # IMPORTANT:
-      # We do NOT search for SPOTIFY_CLIENT_ID here.
-      #
-      # Cassette's setup window legitimately contains code that
-      # writes SPOTIFY_CLIENT_ID to the user's local .env file.
-      #
-      # The actual Client ID is entered by the user at first launch.
-      # It is NOT supposed to be stored in GitHub.
-      # ---------------------------------------------------------
+      # ------------------------------------------------------------
+      # 5. Verify source code
+      # ------------------------------------------------------------
+
       - name: Verify source
         shell: bash
         run: |
@@ -96,61 +121,97 @@ jobs:
             ui \
             main.py
 
+          echo "Python source compilation successful."
 
-      # ---------------------------------------------------------
-      # 5. Create macOS application icon
-      # ---------------------------------------------------------
+
+      # ------------------------------------------------------------
+      # 6. Verify required project files
+      # ------------------------------------------------------------
+
+      - name: Verify project files
+        shell: bash
+        run: |
+          test -f main.py
+          test -f Cassette_mac.spec
+          test -f requirements.txt
+          test -f logo.png
+
+          echo "Required project files found."
+
+
+      # ------------------------------------------------------------
+      # 7. Make macOS application icon
+      # ------------------------------------------------------------
+
       - name: Create macOS app icon
         shell: bash
         run: |
-          rm -rf cassette.iconset cassette.icns
+          rm -rf cassette.iconset
+          rm -f cassette.icns
 
-          mkdir cassette.iconset
+          mkdir -p cassette.iconset
 
-          sips -z 16 16 logo.png \
+          sips -z 16 16 \
+            logo.png \
             --out cassette.iconset/icon_16x16.png
 
-          sips -z 32 32 logo.png \
+          sips -z 32 32 \
+            logo.png \
             --out cassette.iconset/icon_16x16@2x.png
 
-          sips -z 32 32 logo.png \
+          sips -z 32 32 \
+            logo.png \
             --out cassette.iconset/icon_32x32.png
 
-          sips -z 64 64 logo.png \
+          sips -z 64 64 \
+            logo.png \
             --out cassette.iconset/icon_32x32@2x.png
 
-          sips -z 128 128 logo.png \
+          sips -z 128 128 \
+            logo.png \
             --out cassette.iconset/icon_128x128.png
 
-          sips -z 256 256 logo.png \
+          sips -z 256 256 \
+            logo.png \
             --out cassette.iconset/icon_128x128@2x.png
 
-          sips -z 256 256 logo.png \
+          sips -z 256 256 \
+            logo.png \
             --out cassette.iconset/icon_256x256.png
 
-          sips -z 512 512 logo.png \
+          sips -z 512 512 \
+            logo.png \
             --out cassette.iconset/icon_256x256@2x.png
 
-          sips -z 512 512 logo.png \
+          sips -z 512 512 \
+            logo.png \
             --out cassette.iconset/icon_512x512.png
 
-          sips -z 1024 1024 logo.png \
+          sips -z 1024 1024 \
+            logo.png \
             --out cassette.iconset/icon_512x512@2x.png
 
-          iconutil -c icns \
+          iconutil \
+            -c icns \
             cassette.iconset \
             -o cassette.icns
 
           rm -rf cassette.iconset
 
+          test -f cassette.icns
 
-      # ---------------------------------------------------------
-      # 6. Build Cassette.app with PyInstaller
-      # ---------------------------------------------------------
+          echo "macOS icon created."
+
+
+      # ------------------------------------------------------------
+      # 8. Build Cassette.app
+      # ------------------------------------------------------------
+
       - name: Build Cassette.app
         shell: bash
         run: |
-          rm -rf build dist
+          rm -rf build
+          rm -rf dist
 
           python -m PyInstaller \
             --noconfirm \
@@ -162,10 +223,32 @@ jobs:
           test -f \
             dist/Cassette.app/Contents/MacOS/Cassette
 
+          echo "Cassette.app created successfully."
 
-      # ---------------------------------------------------------
-      # 7. Set application version
-      # ---------------------------------------------------------
+
+      # ------------------------------------------------------------
+      # 9. Verify executable architecture
+      # ------------------------------------------------------------
+
+      - name: Verify executable architecture
+        shell: bash
+        run: |
+          echo "Expected architecture:"
+          echo "${{ matrix.arch }}"
+
+          echo ""
+          echo "Actual executable:"
+          file dist/Cassette.app/Contents/MacOS/Cassette
+
+          echo ""
+          echo "Machine architecture:"
+          lipo -info dist/Cassette.app/Contents/MacOS/Cassette
+
+
+      # ------------------------------------------------------------
+      # 10. Stamp application version
+      # ------------------------------------------------------------
+
       - name: Stamp version
         shell: bash
         run: |
@@ -177,10 +260,44 @@ jobs:
             -c "Set :CFBundleVersion $CASSETTE_VERSION" \
             dist/Cassette.app/Contents/Info.plist
 
+          echo "Version:"
+          /usr/libexec/PlistBuddy \
+            -c "Print :CFBundleShortVersionString" \
+            dist/Cassette.app/Contents/Info.plist
 
-      # ---------------------------------------------------------
-      # 8. Create DMG
-      # ---------------------------------------------------------
+
+      # ------------------------------------------------------------
+      # 11. Verify bundle identifier
+      # ------------------------------------------------------------
+
+      - name: Verify application bundle
+        shell: bash
+        run: |
+          echo "Bundle identifier:"
+
+          /usr/libexec/PlistBuddy \
+            -c "Print :CFBundleIdentifier" \
+            dist/Cassette.app/Contents/Info.plist
+
+          echo ""
+
+          echo "Application version:"
+
+          /usr/libexec/PlistBuddy \
+            -c "Print :CFBundleShortVersionString" \
+            dist/Cassette.app/Contents/Info.plist
+
+          echo ""
+
+          echo "Application size:"
+
+          du -sh dist/Cassette.app
+
+
+      # ------------------------------------------------------------
+      # 12. Create DMG
+      # ------------------------------------------------------------
+
       - name: Package DMG
         shell: bash
         run: |
@@ -203,10 +320,16 @@ jobs:
             -format UDZO \
             "dist/Cassette-${{ matrix.arch }}.dmg"
 
+          test -f \
+            "dist/Cassette-${{ matrix.arch }}.dmg"
 
-      # ---------------------------------------------------------
-      # 9. Create portable .app ZIP
-      # ---------------------------------------------------------
+          echo "DMG created."
+
+
+      # ------------------------------------------------------------
+      # 13. Create portable .app ZIP
+      # ------------------------------------------------------------
+
       - name: Package portable ZIP
         shell: bash
         run: |
@@ -218,71 +341,93 @@ jobs:
             dist/Cassette.app \
             "dist/Cassette-${{ matrix.arch }}.app.zip"
 
+          test -f \
+            "dist/Cassette-${{ matrix.arch }}.app.zip"
 
-      # ---------------------------------------------------------
-      # 10. Verify the final files
-      # ---------------------------------------------------------
+          echo "ZIP created."
+
+
+      # ------------------------------------------------------------
+      # 14. Final artifact verification
+      # ------------------------------------------------------------
+
       - name: Verify artifacts
         shell: bash
         run: |
+          echo "======================================"
+          echo "FINAL BUILD VERIFICATION"
+          echo "======================================"
+
           test -f \
             "dist/Cassette-${{ matrix.arch }}.dmg"
 
           test -f \
             "dist/Cassette-${{ matrix.arch }}.app.zip"
 
-          echo "Bundle identifier:"
+          test -d \
+            "dist/Cassette.app"
 
+          test -f \
+            "dist/Cassette.app/Contents/MacOS/Cassette"
+
+          echo ""
+          echo "Architecture:"
+          file \
+            dist/Cassette.app/Contents/MacOS/Cassette
+
+          echo ""
+          echo "Bundle:"
           /usr/libexec/PlistBuddy \
             -c "Print :CFBundleIdentifier" \
             dist/Cassette.app/Contents/Info.plist
 
-          echo "Cassette version:"
-
+          echo ""
+          echo "Version:"
           /usr/libexec/PlistBuddy \
             -c "Print :CFBundleShortVersionString" \
             dist/Cassette.app/Contents/Info.plist
 
-          echo "Executable architecture:"
+          echo ""
+          echo "Files:"
+          ls -lh \
+            "dist/Cassette-${{ matrix.arch }}.dmg" \
+            "dist/Cassette-${{ matrix.arch }}.app.zip"
 
-          file \
-            dist/Cassette.app/Contents/MacOS/Cassette
-
+          echo ""
           echo "Application size:"
-
           du -sh dist/Cassette.app
 
+          echo ""
+          echo "======================================"
+          echo "BUILD SUCCESSFUL"
+          echo "======================================"
 
-      # ---------------------------------------------------------
-      # 11. Upload DMG and ZIP to GitHub Actions
-      # ---------------------------------------------------------
+
+      # ------------------------------------------------------------
+      # 15. Upload artifacts to GitHub Actions
+      # ------------------------------------------------------------
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: Cassette-macOS-${{ matrix.arch }}
-
           path: |
             dist/Cassette-${{ matrix.arch }}.dmg
             dist/Cassette-${{ matrix.arch }}.app.zip
-
           if-no-files-found: error
-
           retention-days: 30
 
 
-      # ---------------------------------------------------------
-      # 12. Optional GitHub Release
-      # ---------------------------------------------------------
+      # ------------------------------------------------------------
+      # 16. Create GitHub Release
+      # ------------------------------------------------------------
+
       - name: Attach DMG to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v') || inputs.create_release == true
-
         uses: softprops/action-gh-release@v2
-
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('v{0}', inputs.version) }}
-
           files: |
             dist/Cassette-${{ matrix.arch }}.dmg
             dist/Cassette-${{ matrix.arch }}.app.zip
-
           generate_release_notes: true
