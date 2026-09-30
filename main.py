@@ -63,7 +63,7 @@ def main():
     monitor.status_changed.connect(cassette.on_player_status)
     monitor.start()
 
-    # Demo mode starts hidden. Use Ctrl+Alt + draw S, or the tray menu.
+    # Demo mode starts hidden. Use the platform activation gesture, or the tray menu.
     return app.exec()
 
 
