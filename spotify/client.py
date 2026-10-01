@@ -67,6 +67,16 @@ class SpotifyClient(QObject):
         self._token = None
         self._lock = threading.RLock()
         self._auth_thread = None
+
+        # Network failures are normal for a desktop music widget. Do not
+        # turn a temporary Wi-Fi loss into a stream of tray notifications.
+        self._last_refresh_attempt = 0.0
+        self._refresh_retry_interval = 15.0
+        self._last_network_error = 0.0
+        self._network_error_interval = 30.0
+        self._last_error_message = ""
+        self._last_error_time = 0.0
+
         self._load_token()
 
     @staticmethod
@@ -219,16 +229,39 @@ class SpotifyClient(QObject):
         except Exception as exc:
             self.error.emit(f"Could not save Spotify token securely: {exc}")
 
+    def _emit_error_once(self, message: str, interval: float = 30.0):
+        """Show a real error once, not repeatedly during a transient failure."""
+        now = time.monotonic()
+        if message == self._last_error_message and now - self._last_error_time < interval:
+            return
+        self._last_error_message = message
+        self._last_error_time = now
+        self.error.emit(message)
+
     def _refresh_if_needed(self) -> bool:
         with self._lock:
             token = dict(self._token or {})
+
         if not token:
             return False
+
+        # The existing access token is still usable. No network request is
+        # needed, which is important when Wi-Fi temporarily disappears.
         if int(token.get("expires_at", 0)) > int(time.time()):
             return True
+
         refresh_token = token.get("refresh_token")
         if not refresh_token:
             return False
+
+        # Once the access token has expired, do not hammer Spotify every
+        # playback poll while the machine is offline. Try the refresh again
+        # after a short cooldown.
+        now = time.monotonic()
+        if now - self._last_refresh_attempt < self._refresh_retry_interval:
+            return False
+        self._last_refresh_attempt = now
+
         try:
             response = requests.post(
                 self.TOKEN_URL,
@@ -237,46 +270,99 @@ class SpotifyClient(QObject):
                     "refresh_token": refresh_token,
                     "client_id": self.client_id,
                 },
-                timeout=15,
+                timeout=10,
             )
             response.raise_for_status()
             new_token = response.json()
             new_token["refresh_token"] = new_token.get("refresh_token", refresh_token)
             new_token["expires_at"] = int(time.time()) + int(new_token.get("expires_in", 3600)) - 30
             self._save_token(new_token)
+            self._last_refresh_attempt = 0.0
             return True
+
+        except requests.RequestException:
+            # Wi-Fi/offline/DNS/TLS problems are transient. They are handled
+            # silently so a disconnected machine does not produce a tray
+            # notification every poll. The next retry happens after the
+            # cooldown above.
+            return False
+
+        except (ValueError, KeyError) as exc:
+            # Spotify returned something unexpected rather than a normal
+            # network failure. Report it, but still rate-limit the message.
+            self._emit_error_once(f"Spotify token refresh failed: {exc}")
+            return False
+
         except Exception as exc:
-            self.error.emit(f"Spotify token refresh failed: {exc}")
+            self._emit_error_once(f"Spotify token refresh failed: {exc}")
             return False
 
     def _request(self, method: str, path: str, **kwargs):
         if not self._refresh_if_needed():
             return None
+
         with self._lock:
             access = (self._token or {}).get("access_token")
         if not access:
             return None
+
         headers = kwargs.pop("headers", {})
         headers["Authorization"] = f"Bearer {access}"
-        response = requests.request(method, self.API_URL + path, headers=headers, timeout=10, **kwargs)
-        if response.status_code == 401 and self._refresh_if_needed():
-            with self._lock:
-                access = (self._token or {}).get("access_token")
-            headers["Authorization"] = f"Bearer {access}"
-            response = requests.request(method, self.API_URL + path, headers=headers, timeout=10, **kwargs)
+
+        try:
+            response = requests.request(
+                method,
+                self.API_URL + path,
+                headers=headers,
+                timeout=10,
+                **kwargs,
+            )
+        except requests.RequestException:
+            # Temporary loss of Wi-Fi/network access is not an application
+            # error. Stay quiet and let the next poll retry.
+            return None
+
+        if response.status_code == 401:
+            # A 401 can happen when Spotify expires the access token earlier
+            # than expected. Try one refresh, then retry the original request.
+            if self._refresh_if_needed():
+                with self._lock:
+                    access = (self._token or {}).get("access_token")
+                if not access:
+                    return None
+                headers["Authorization"] = f"Bearer {access}"
+                try:
+                    response = requests.request(
+                        method,
+                        self.API_URL + path,
+                        headers=headers,
+                        timeout=10,
+                        **kwargs,
+                    )
+                except requests.RequestException:
+                    return None
+
         # Spotify playback endpoints commonly return an empty successful body.
         # Never call response.json() on an empty response.
         if response.status_code == 204 or not response.content.strip():
             return {}
+
         if response.ok:
             try:
                 return response.json()
             except ValueError:
                 return {}
+
         if response.status_code in (401, 403):
-            self.error.emit(f"Spotify playback request returned {response.status_code}. Make sure Spotify is open and your account supports playback control.")
+            self._emit_error_once(
+                f"Spotify playback request returned {response.status_code}. "
+                "Make sure Spotify is open and your account supports playback control."
+            )
         elif response.status_code == 429:
-            self.error.emit("Spotify rate limit reached; Cassette will retry on the next poll.")
+            self._emit_error_once(
+                "Spotify rate limit reached; Cassette will retry on the next poll."
+            )
+
         return None
 
     def current(self):
